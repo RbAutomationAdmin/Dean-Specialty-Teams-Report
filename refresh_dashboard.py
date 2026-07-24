@@ -283,9 +283,22 @@ def read_cc_export(path):
     return stores or None
 
 
+def js_safe(payload):
+    """Serialize for embedding inside the dashboard's <script> block.
+
+    json.dumps leaves < > & literal, so a value containing e.g. "</script>" would
+    terminate the script element and inject markup into the page. Escape those
+    characters (plus the JS line separators) as \\uXXXX, which decode back to the
+    original characters when the browser parses the string literals.
+    """
+    j = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    return (j.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+             .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
 def inject_cc(html, stores, period):
     cc = {"period": period, "metrics": [m for _, m in CC_COLMAP], "stores": stores}
-    line = "const CC = " + json.dumps(cc, separators=(",", ":"), ensure_ascii=False) + ";"
+    line = "const CC = " + js_safe(cc) + ";"
     if re.search(r"const CC = \{.*?\};", html, re.S):
         return re.sub(r"const CC = \{.*?\};", lambda _: line, html, count=1, flags=re.S)
     html, n = re.subn(r"(const ROSTER = \[.*?\];\n)", lambda m: m.group(1) + line + "\n",
@@ -334,8 +347,8 @@ def totals_of(master):
 
 
 def inject(html, master, roster, stamp, data_through):
-    mj = json.dumps(master, separators=(",", ":"), ensure_ascii=False)
-    rj = json.dumps([list(r) for r in roster], separators=(",", ":"), ensure_ascii=False)
+    mj = js_safe(master)
+    rj = js_safe([list(r) for r in roster])
     html, n1 = re.subn(r"const MASTER = \{.*?\};", lambda _: "const MASTER = " + mj + ";",
                        html, count=1, flags=re.S)
     html, n2 = re.subn(r"const ROSTER = \[.*?\];", lambda _: "const ROSTER = " + rj + ";",
